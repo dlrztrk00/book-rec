@@ -1,0 +1,61 @@
+{
+  "builtAt": "2026-09-08T07:54:25.410Z",
+  "books": 10000,
+  "ratings": 4122111,
+  "readers": 53406,
+  "neighborsPerBook": 40,
+  "sources": [
+    {
+      "name": "goodbooks-10k",
+      "url": "https://github.com/zygmuntz/goodbooks-10k",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "name": "goodbooks-10k-extended (aciklama/tur alanlari)",
+      "url": "https://github.com/malcolmosh/goodbooks-10k-extended",
+      "license": "CC BY-SA 4.0"
+    }
+  ],
+  "rawChecksums": [
+    {
+      "rel": "canon/ratings.csv",
+      "sha256": "1ee8a97172bd6d97147a30d9cfb3029ac240bd27ba2aa9365981c051c65113f8"
+    },
+    {
+      "rel": "canon/book_tags.csv",
+      "sha256": "8ff2f0659be9ddbe10bf47ba33b5b69024f893f017ac665236f15bc97d862950"
+    },
+    {
+      "rel": "canon/tags.csv",
+      "sha256": "87f316957564fa21c316a4f50afc87f07906f478f990eec027aaca00c536c449"
+    },
+    {
+      "rel": "canon/to_read.csv",
+      "sha256": "d8aa721f08ede9f457f5895439b2415f0d1cb16e86a9e86de3f5f477a6c2fd2f"
+    },
+    {
+      "rel": "canon/books.csv",
+      "sha256": "4d21d0e0433128657c752e3a3d0405ac0ec11675d6c70c64cb0abf4ab1acb76a"
+    },
+    {
+      "rel": "ext/ratings.csv",
+      "sha256": "1ee8a97172bd6d97147a30d9cfb3029ac240bd27ba2aa9365981c051c65113f8"
+    },
+    {
+      "rel": "ext/book_tags.csv",
+      "sha256": "8ff2f0659be9ddbe10bf47ba33b5b69024f893f017ac665236f15bc97d862950"
+    },
+    {
+      "rel": "ext/tags.csv",
+      "sha256": "87f316957564fa21c316a4f50afc87f07906f478f990eec027aaca00c536c449"
+    },
+    {
+      "rel": "ext/to_read.csv",
+      "sha256": "d8aa721f08ede9f457f5895439b2415f0d1cb16e86a9e86de3f5f477a6c2fd2f"
+    },
+    {
+      "rel": "ext/books_enriched.csv",
+      "sha256": "13a938aa6cd7be91bc04173fea75506a490549e340f5542a106d6f4cf40975e4"
+    }
+  ]
+}

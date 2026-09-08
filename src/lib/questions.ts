@@ -142,6 +142,15 @@ export const QUESTIONS: Question[] = [
       { value: 'hidden', label: 'Az bilinen, keşif olsun' },
     ] },
 
+  { id: 'freshness', section: 'Keşif', kind: 'single',
+    prompt: 'Yeni çıkanlar mı, oturmuş kitaplar mı?',
+    help: '2017 sonrası kitaplar Open Library’den canlı gelir; arkalarında ortak okur verisi yoktur, eşleşme konu benzerliğine dayanır.',
+    options: [
+      { value: 'new', label: 'Ağırlıklı yeni çıkanlar olsun' },
+      { value: 'balanced', label: 'Karışık olsun' },
+      { value: 'classics', label: 'Sadece oturmuş kitaplar — yeni istemiyorum' },
+    ] },
+
   { id: 'novelty', section: 'Keşif', kind: 'single',
     prompt: 'Alıştığın tarza ne kadar yakın olsun?',
     help: 'Okuma geçmişin varsa bu ayarı kullanır.',
@@ -164,6 +173,7 @@ export type Prefs = {
   pages: [number, number] | null;
   year: [number, number] | null;
   series: 'any' | 'standalone' | 'first';
+  freshness: 'new' | 'balanced' | 'classics';
   popularity: 'popular' | 'any' | 'hidden';
   novelty: 'safe' | 'stretch' | 'wild';
   likeBooks: number[];
@@ -210,6 +220,7 @@ export function derivePrefs(answers: Answers): Prefs {
     pages: lengthMap[answers.length as string] ?? null,
     year: eraMap[answers.era as string] ?? null,
     series: (answers.series as Prefs['series']) ?? 'any',
+    freshness: (answers.freshness as Prefs['freshness']) ?? 'balanced',
     popularity: (answers.popularity as Prefs['popularity']) ?? 'any',
     novelty: (answers.novelty as Prefs['novelty']) ?? 'stretch',
     likeBooks: (answers.likeBooks as number[] | undefined) ?? [],

@@ -252,8 +252,13 @@ for (let s = 0; s * SHARD < N; s++) {
   writeFileSync(join(OUT, 'desc', `${s}.json`), JSON.stringify(obj));
 }
 
+// Boyut eslestirme kurallari tarayiciya da gonderilir: Open Library'den gelen
+// yeni kitaplarin konu etiketleri ayni taksonomiyle 26 boyuta cevrilebilsin diye.
 writeFileSync(join(OUT, 'facets.json'), JSON.stringify({
-  facets: FACETS.map((f) => ({ id: f.id, label: f.label })),
+  facets: FACETS.map((f) => ({
+    id: f.id, label: f.label,
+    tags: f.tags, genres: f.genres, re: f.re ? f.re.source : null,
+  })),
   descShard: SHARD, simK: K, bookCount: N,
 }));
 

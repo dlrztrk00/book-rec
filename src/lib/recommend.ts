@@ -1,11 +1,13 @@
 import type { Book, Dataset } from './dataset';
 import type { LibraryEntry } from './goodreads';
+import type { FreshBook } from './openlibrary';
 import type { Prefs } from './questions';
 
 export type SeedReason = { book: Book; weight: number };
 
 export type Recommendation = {
   book: Book;
+  isNew: boolean;
   match: number;                       // 0-100
   parts: { taste: number; prefs: number; quality: number; discovery: number };
   seeds: SeedReason[];                 // "sunlari sevdigin icin"
@@ -37,11 +39,45 @@ const normalize = (m: Map<number, number>) => {
   return (v: number) => (span > 1e-9 ? (v - lo) / span : 0.5);
 };
 
+/** Kullanicinin sevdigi kitaplarin etiketlerinden bir "konu profili" cikarir.
+ *  Yeni kitaplarda ortak-okur verisi olmadigi icin koprü bu profil uzerinden kurulur. */
+function tasteProfile(ds: Dataset, library: LibraryEntry[]): Map<string, number> {
+  const p = new Map<string, number>();
+  for (const e of library) {
+    const w = e.myRating === 5 ? 1 : e.myRating === 4 ? 0.55 : 0;
+    if (!w) continue;
+    const b = ds.books[e.bookId];
+    if (!b) continue;
+    b.tags.forEach((t, i) => {
+      const k = t.toLowerCase();
+      p.set(k, (p.get(k) ?? 0) + (w / (1 + i / 6)));
+    });
+  }
+  let norm = 0;
+  for (const v of p.values()) norm += v * v;
+  norm = Math.sqrt(norm) || 1;
+  for (const [k, v] of p) p.set(k, v / norm);
+  return p;
+}
+
+function bridgeScore(profile: Map<string, number>, tags: string[]): number {
+  if (!profile.size || !tags.length) return 0;
+  let dot = 0, norm = 0;
+  tags.forEach((t, i) => {
+    const w = 1 / (1 + i / 6);
+    norm += w * w;
+    const pv = profile.get(t.toLowerCase().trim());
+    if (pv) dot += pv * w;
+  });
+  return norm ? dot / Math.sqrt(norm) : 0;
+}
+
 export function recommend(
   ds: Dataset,
   library: LibraryEntry[],
   prefs: Prefs,
   limit = 12,
+  fresh: FreshBook[] = [],
 ): Recommendation[] {
   const facetIndex = new Map(ds.facets.map((f, i) => [f.id, i]));
   const F = ds.facets.length;
@@ -120,16 +156,44 @@ export function recommend(
     if (prefs.series === 'first' && b.seriesNo > 1) continue;
     pool.push(b);
   }
+  // ---- Open Library'den gelen 2017 sonrasi adaylar (ortak okur verisi yok)
+  const freshFacets = new Map<number, Float32Array>();
+  const freshBridge = new Map<number, number>();
+  const profile = tasteProfile(ds, library);
+  const rawBridge: number[] = [];
+
+  for (const fb of prefs.freshness === 'classics' ? [] : fresh) {
+    const v = ds.facetsFromSubjects(fb.subjects);
+    if (avoidIdx.some((i) => v[i] > 0.55)) continue;
+    if (prefs.pages && fb.pages > 0 && (fb.pages < prefs.pages[0] || fb.pages > prefs.pages[1])) continue;
+    if (prefs.year && fb.year > 0 && (fb.year < prefs.year[0] || fb.year > prefs.year[1])) continue;
+    if (prefs.kind !== 'either') {
+      const nf = v[facetIndex.get('truestory') ?? -1] ?? 0;
+      if (prefs.kind === 'nonfiction' && nf < 0.35) continue;
+      if (prefs.kind === 'fiction' && nf > 0.6) continue;
+    }
+    freshFacets.set(fb.id, v);
+    const bs = bridgeScore(profile, fb.tags);
+    freshBridge.set(fb.id, bs);
+    rawBridge.push(bs);
+    pool.push(fb);
+  }
+
+  const facetsOf = (b: Book): Float32Array => freshFacets.get(b.id) ?? ds.facetVector(b.id);
+  const isFresh = (b: Book) => freshFacets.has(b.id);
+
   if (!pool.length) return [];
 
   // ---- bilesenler
   const rawPrefs = new Map<number, number>();
   const rawDisc = new Map<number, number>();
   const rawQual = new Map<number, number>();
+  const qualLocal = new Map<number, number>(), qualFresh = new Map<number, number>();
+  const discLocal = new Map<number, number>(), discFresh = new Map<number, number>();
   const maxLog = Math.log10(26000);
 
   for (const b of pool) {
-    const v = ds.facetVector(b.id);
+    const v = facetsOf(b);
     let pos = 0, neg = 0;
     for (let i = 0; i < F; i++) {
       if (desire[i] > 0) pos += desire[i] * v[i];
@@ -138,20 +202,34 @@ export function recommend(
     const p = (posSum ? pos / posSum : 0.5) - (negSum ? (neg / negSum) * 0.9 : 0);
     rawPrefs.set(b.id, p);
 
-    const lp = Math.min(1, Math.log10(b.likes + 1) / maxLog);
-    rawDisc.set(b.id,
-      prefs.popularity === 'popular' ? lp
+    // Goodreads ve Open Library'nin oy hacimleri ~100 kat farkli. Ayni Bayes
+    // kaydirmasi yeni kitaplari sistematik olarak eziyor; her kaynak kendi
+    // olcegi icinde degerlendirilip ayri normalize edilir.
+    const fresh = isFresh(b);
+    const lp = Math.min(1, Math.log10(b.likes + 1) / (fresh ? Math.log10(15000) : maxLog));
+    const disc = prefs.popularity === 'popular' ? lp
       : prefs.popularity === 'hidden' ? 1 - lp
-      : 1 - Math.abs(lp - 0.55) * 0.8);
+      : 1 - Math.abs(lp - 0.55) * 0.8;
 
-    const m = 800;                                                 // Bayes kaydirmasi
-    rawQual.set(b.id, (b.avg * b.count + 3.9 * m) / (b.count + m));
+    const m = fresh ? 25 : 800;                                    // kaynagin oy hacmine gore
+    const qual = (b.avg * b.count + (fresh ? 3.85 : 3.9) * m) / (b.count + m);
+
+    rawDisc.set(b.id, disc);
+    rawQual.set(b.id, qual);
+    (fresh ? qualFresh : qualLocal).set(b.id, qual);
+    (fresh ? discFresh : discLocal).set(b.id, disc);
   }
 
+  const bridgeNorm = (() => {
+    if (!rawBridge.length) return () => 0;
+    const hi = Math.max(...rawBridge), lo = Math.min(...rawBridge);
+    const span = hi - lo;
+    return (v: number) => (span > 1e-9 ? (v - lo) / span : 0.5);
+  })();
   const nTaste = normalize(taste);
   const nPrefs = normalize(rawPrefs);
-  const nDisc = normalize(rawDisc);
-  const nQual = normalize(rawQual);
+  const nQualLocal = normalize(qualLocal), nQualFresh = normalize(qualFresh);
+  const nDiscLocal = normalize(discLocal), nDiscFresh = normalize(discFresh);
   const W = WEIGHTS[prefs.novelty];
   const hasTaste = posCount > 0 && taste.size > 0;
   const w = hasTaste ? W : { taste: 0, prefs: W.prefs + W.taste, quality: W.quality, discovery: W.discovery };
@@ -161,10 +239,14 @@ export function recommend(
 
   for (const b of pool) {
     const parts = {
-      taste: hasTaste ? nTaste(taste.get(b.id) ?? 0) : 0,
+      // Yeni kitaplarda ortak-okur sinyali yok: konu koprüsü kullanilir ve
+      // daha zayif bir kanit oldugu icin bir miktar kisilir.
+      taste: isFresh(b)
+        ? (profile.size ? bridgeNorm(freshBridge.get(b.id) ?? 0) * 0.85 : 0)
+        : hasTaste ? nTaste(taste.get(b.id) ?? 0) : 0,
       prefs: nPrefs(rawPrefs.get(b.id) ?? 0),
-      quality: nQual(rawQual.get(b.id) ?? 0),
-      discovery: nDisc(rawDisc.get(b.id) ?? 0),
+      quality: (isFresh(b) ? nQualFresh : nQualLocal)(rawQual.get(b.id) ?? 0),
+      discovery: (isFresh(b) ? nDiscFresh : nDiscLocal)(rawDisc.get(b.id) ?? 0),
     };
     let total = parts.taste * w.taste + parts.prefs * w.prefs
               + parts.quality * w.quality + parts.discovery * w.discovery;
@@ -185,20 +267,47 @@ export function recommend(
 
   scored.sort((x, y) => y.total - x.total);
 
-  // ---- cesitlilik: yazar basina en fazla 2, seri basina 1
-  const out: Recommendation[] = [];
+  // ---- secim: yazar basina en fazla 2, seri basina 1, artı yeni kitap kotasi.
+  // Yeni kitaplarin arkasinda ortak okur kaniti olmadigi icin ham puanda
+  // yerel klasiklere karsi hep geride kalirlar; kullanici yeni istediyse
+  // liste icinde kendilerine ayrilmis yer verilir.
   const perAuthor = new Map<string, number>();
   const usedSeries = new Set<string>();
-
-  for (const s of scored) {
-    if (out.length >= limit) break;
-    const a = s.b.authors[0] ?? '?';
-    if ((perAuthor.get(a) ?? 0) >= 2) continue;
-    if (s.b.series && usedSeries.has(s.b.series)) continue;
+  const eligible = (b: Book) => {
+    const a = b.authors[0] ?? '?';
+    if ((perAuthor.get(a) ?? 0) >= 2) return false;
+    if (b.series && usedSeries.has(b.series)) return false;
+    return true;
+  };
+  const take = (b: Book) => {
+    const a = b.authors[0] ?? '?';
     perAuthor.set(a, (perAuthor.get(a) ?? 0) + 1);
-    if (s.b.series) usedSeries.add(s.b.series);
+    if (b.series) usedSeries.add(b.series);
+  };
 
-    const v = ds.facetVector(s.b.id);
+  const freshQuota = prefs.freshness === 'new' ? Math.ceil(limit * 0.6)
+    : prefs.freshness === 'balanced' ? Math.floor(limit * 0.25) : 0;
+
+  const picked = new Set<number>();
+  if (freshQuota > 0) {
+    let n = 0;
+    for (const s of scored) {
+      if (n >= freshQuota) break;
+      if (!isFresh(s.b) || !eligible(s.b)) continue;
+      take(s.b); picked.add(s.b.id); n++;
+    }
+  }
+  for (const s of scored) {
+    if (picked.size >= limit) break;
+    if (picked.has(s.b.id) || !eligible(s.b)) continue;
+    take(s.b); picked.add(s.b.id);
+  }
+
+  const out: Recommendation[] = [];
+  for (const s of scored) {
+    if (!picked.has(s.b.id)) continue;
+
+    const v = facetsOf(s.b);
     const wanted = ds.facets
       .map((f, i) => ({ label: f.label, d: desire[i], v: v[i] }))
       .filter((x) => x.d > 0.15);
@@ -213,6 +322,7 @@ export function recommend(
 
     out.push({
       book: s.b,
+      isNew: isFresh(s.b),
       match: Math.round(s.total * 100),
       parts: s.parts,
       seeds,

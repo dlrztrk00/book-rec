@@ -2,15 +2,22 @@
 
 Goodreads okuma geçmişini yükle, birkaç soruya cevap ver, gerekçeli kitap önerileri al.
 
-Tamamen tarayıcıda çalışır. **Site açıldıktan sonra hiçbir yere istek gitmez** — ne API, ne
-analitik, ne kapak görseli. Kütüphanen ve cevapların yalnızca `localStorage`'da tutulur.
+Puanlamanın tamamı tarayıcında yapılır. **Kütüphanen ve anket cevapların hiçbir yere
+gönderilmez** — yalnızca `localStorage`'da tutulur. Analitik yok, hesap yok, kapak
+görselleri bile yerel üretilir.
+
+Dışarı giden tek şey, 2017 sonrası kitaplar için [Open Library](https://openlibrary.org)'ye
+atılan **konu arama sorgularıdır** (ör. `subject:"literary fiction" first_publish_year:[2017 TO 2100]`).
+Bu sorgular senin verini içermez. İnternet yoksa site çalışmaya devam eder, sadece
+10.000 kitaplık yerel havuzla sınırlı kalır.
 
 ## Nasıl çalışıyor
 
 1. **İçe aktarma** — Goodreads'in `Export Library` CSV'si okunur. Kitaplar önce Goodreads
    id'siyle, tutmazsa başlık+yazar, o da tutmazsa tek aday varsa başlıkla eşleştirilir.
-2. **Anket** — 16 soru: ruh hali, tempo, ton, tür, tema, uzunluk, dönem, seri tercihi,
-   kaçınılacak içerikler, ne kadar keşif istediğin ve "şuna benzer olsun" kitap seçimi.
+2. **Anket** — 17 soru: ruh hali, tempo, ton, tür, tema, uzunluk, dönem, seri tercihi,
+   kaçınılacak içerikler, ne kadar keşif istediğin, yeni çıkanlara ne kadar yer verileceği
+   ve "şuna benzer olsun" kitap seçimi.
 3. **Öneri** — dört bileşenden bir eşleşme yüzdesi:
 
    | Bileşen | Nereden geliyor |
@@ -22,6 +29,30 @@ analitik, ne kapak görseli. Kütüphanen ve cevapların yalnızca `localStorage
 
    Her kart hangi kitaplarından türediğini, hangi boyutları tutturduğunu ve neyi
    tutturamadığını ayrı ayrı gösterir.
+
+## Yeni kitaplar (2017+)
+
+Yerel veri seti 2017'de bitiyor. Sonrasını Open Library'den **canlı** çekiyoruz: anket
+profilindeki en güçlü boyutlar Open Library konu terimlerine çevriliyor, 2017 sonrası
+kitaplar okunma sayısına göre sıralanıp getiriliyor. Sonuçlar 7 gün `localStorage`'da
+önbelleklenir, yani ikinci açılış anında gelir.
+
+Burada dürüst olmak gerekiyor: **yeni kitapların arkasında ortak okur verisi yok.**
+53k okurun ne birlikte sevdiğini bilmiyoruz, çünkü o veri 2017'de donmuş. Yeni kitaplar
+sevdiğin kitapların *konularıyla* örtüşmelerine göre bağlanıyor — daha zayıf bir kanıt.
+Bu yüzden:
+
+- Kartta "Okuma geçmişin" yerine **"Konu bağı"** yazar ve mavi bir rozetle işaretlenir
+- Bu bileşen bilerek %15 kısılır
+- Ankette **"Yeni çıkanlar mı, oturmuş kitaplar mı?"** sorusu vardır: `ağırlıklı yeni`
+  listenin ~%60'ını, `karışık` ~%25'ini yeni kitaplara ayırır, `sadece oturmuş` hiç getirmez
+
+Open Library'nin oy hacmi Goodreads'ten ~100 kat düşük olduğu için kalite ve popülerlik
+puanları iki kaynak için **ayrı ayrı** normalize edilir; yoksa yeni kitaplar sistematik
+olarak elenir.
+
+Bilinen pürüz: Open Library bazı kitapların başlığını orijinal dilinde tutuyor, o yüzden
+ara sıra İngilizce baskısı olan bir kitap İsveççe/Fransızca adıyla görünebilir.
 
 ### "Okuyucular bunları da sevdi" nereden geliyor
 
@@ -42,7 +73,7 @@ Diğer komutlar:
 
 ```bash
 npm run data:verify   # kaynak bütünlüğü + içerik güvenliği raporu
-npm test              # uçtan uca öneri motoru denemesi
+npm test              # uçtan uca deneme (canlı Open Library testi dahil)
 npm run build         # dist/ üretir, statik olarak her yere konabilir
 ```
 
@@ -69,6 +100,8 @@ indeks) dağıtım kolay olsun diye depoda tutulur.
 
 ## Lisans
 
-Kaynak kodu MIT ([LICENSE](LICENSE)). `public/data/` altındaki üretilmiş veri
-goodbooks-10k türevidir, CC BY-SA 4.0 ile lisanslıdır — bkz.
-[public/data/LICENSE.md](public/data/LICENSE.md).
+| Ne | Lisans |
+|---|---|
+| Kaynak kodu | MIT — [LICENSE](LICENSE) |
+| `public/data/` altındaki üretilmiş veri | CC BY-SA 4.0 (goodbooks-10k türevi) — [public/data/LICENSE.md](public/data/LICENSE.md) |
+| Open Library'den canlı gelen veri | CC0 — kamu malı, atıf zorunlu değil (yine de altbilgide veriliyor) |

@@ -1,10 +1,15 @@
+import { makeFacetsFromSubjects } from './facetMatch';
+
 export type Book = {
   id: number; gr: number; title: string; authors: string[];
   year: number; pages: number; avg: number; count: number;
   genres: string[]; series: string; seriesNo: number; likes: number; tags: string[];
 };
 
-export type Facet = { id: string; label: string };
+export type Facet = {
+  id: string; label: string;
+  tags: string[]; genres: string[]; re: string | null;
+};
 export type Neighbor = { id: number; score: number };
 
 export type Dataset = {
@@ -16,6 +21,8 @@ export type Dataset = {
   neighbors(id: number): Neighbor[];
   facetValue(id: number, facetIndex: number): number;   // 0..1
   facetVector(id: number): Float32Array;
+  /** Open Library konu etiketlerini ayni 26 boyutlu vektore cevirir. */
+  facetsFromSubjects(subjects: string[]): Float32Array;
   byGoodreadsId: Map<number, number>;
   descriptionOf(id: number): Promise<string | null>;
 };
@@ -90,6 +97,7 @@ export async function loadDataset(onProgress?: (m: string) => void): Promise<Dat
       for (let i = 0; i < F; i++) v[i] = facetBytes[off + i] / 255;
       return v;
     },
+    facetsFromSubjects: makeFacetsFromSubjects(facetsRaw.facets),
     async descriptionOf(id) {
       if (descCache.has(id)) return descCache.get(id)!;
       const shard = Math.floor((id - 1) / SHARD);

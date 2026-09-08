@@ -5,6 +5,20 @@ import type { Book, Dataset } from '../src/lib/dataset.ts';
 import { importGoodreadsCsv } from '../src/lib/goodreads.ts';
 import { derivePrefs, type Answers } from '../src/lib/questions.ts';
 import { recommend } from '../src/lib/recommend.ts';
+import { makeFacetsFromSubjects } from '../src/lib/facetMatch.ts';
+import { fetchFresh, fetchFreshDescription, type FreshBook } from '../src/lib/openlibrary.ts';
+
+// Node'da localStorage yok; onbellek katmani icin basit bir vekil.
+if (typeof globalThis.localStorage === 'undefined') {
+  const m = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => { m.set(k, v); },
+    removeItem: (k: string) => { m.delete(k); },
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() { return m.size; },
+  };
+}
 
 const OUT = join(process.cwd(), 'public', 'data');
 const j = (p: string) => JSON.parse(readFileSync(join(OUT, p), 'utf8'));
@@ -38,6 +52,7 @@ function buildDataset(): Dataset {
     },
     facetValue: (id, fi) => facetBytes[(id - 1) * F + fi] / 255,
     facetVector(id) { const v = new Float32Array(F); const o = (id - 1) * F; for (let i = 0; i < F; i++) v[i] = facetBytes[o + i] / 255; return v; },
+    facetsFromSubjects: makeFacetsFromSubjects(facetsRaw.facets),
     descriptionOf: async () => null,
   };
 }
@@ -103,3 +118,65 @@ check(noLib.length === 5 && noLib.every((r) => r.parts.taste === 0), 'kutuphanes
 const avoided = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, avoid: ['dark', 'romance'] }), 10);
 const fi = new Map(ds.facets.map((f, i) => [f.id, i]));
 check(avoided.every((r) => ds.facetValue(r.book.id, fi.get('dark')!) <= 0.55), 'kacinilan boyut sert filtreleniyor');
+
+
+// ---------------------------------------------------------------- canli Open Library
+console.log('\nCANLI OPEN LIBRARY TESTI');
+const prefs0 = derivePrefs(senaryolar[0].a);
+const topFacets = Object.entries(prefs0.facetWeights)
+  .filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+console.log('  profil boyutlari:', topFacets.slice(0, 4).join(', '));
+
+const t0 = Date.now();
+const fresh: FreshBook[] = await fetchFresh(ds, topFacets, (d, t) => process.stdout.write(`\r  sorgu ${d}/${t}   `));
+const dt = ((Date.now() - t0) / 1000).toFixed(1);
+console.log(`\r  ${fresh.length} yeni aday geldi (${dt}s)          `);
+
+if (fresh.length) {
+  const yrs = fresh.map((f) => f.year);
+  console.log(`  yil araligi: ${Math.min(...yrs)}-${Math.max(...yrs)}`);
+  const withFresh = recommend(ds, imported.entries, prefs0, 10, fresh);
+  const yeni = withFresh.filter((r) => r.isNew);
+  console.log(`\n  ${yeni.length}/${withFresh.length} oneri yeni kitap:`);
+  for (const r of withFresh) {
+    const tag = r.isNew ? `YENI ${r.book.year}` : 'yerel     ';
+    console.log(`   ${String(r.match).padStart(3)}% ${tag} ${r.book.title.slice(0, 38).padEnd(40)} ${(r.book.authors[0] ?? '').slice(0, 18)}`);
+  }
+  if (yeni.length) {
+    const d = await fetchFreshDescription((yeni[0].book as FreshBook).workKey);
+    console.log(`\n  ozet denemesi (${yeni[0].book.title.slice(0, 30)}): ${d ? d.slice(0, 90) + '...' : 'YOK'}`);
+  }
+
+  console.log('\n  TAZELIK MODLARI');
+  for (const mode of ['new', 'balanced', 'classics'] as const) {
+    const rr = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, freshness: mode }), 12, fresh);
+    const n = rr.filter((r) => r.isNew).length;
+    console.log(`    ${mode.padEnd(9)} -> ${n}/${rr.length} yeni`);
+    if (mode === 'new') for (const r of rr.filter((x) => x.isNew).slice(0, 5))
+      console.log(`        ${r.match}% ${r.book.year} ${r.book.title.slice(0, 40)} — ${(r.book.authors[0] ?? '')}`);
+  }
+
+  console.log('\n  KONTROLLER');
+  const ck = (ok: boolean, m: string) => console.log(`    ${ok ? 'OK  ' : 'HATA'} ${m}`);
+  ck(fresh.every((f) => f.year >= 2017), 'tum yeni kitaplar 2017+');
+  ck(fresh.every((f) => f.subjects.length >= 5), 'kalite filtresi: konu sayisi >= 5');
+  ck(new Set(fresh.map((f) => f.id)).size === fresh.length, 'yeni kitap id catismasi yok');
+  ck(withFresh.every((r) => r.match >= 0 && r.match <= 100), 'eslesme yuzdesi araliginda');
+  const eraLimited = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, era: 'classic' }), 10, fresh);
+  ck(eraLimited.every((r) => !r.isNew), 'donem filtresi yeni kitaplari da eliyor');
+  const avoidTest = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, avoid: ['romance'] }), 10, fresh);
+  const fi2 = new Map(ds.facets.map((f, i) => [f.id, i]));
+  ck(avoidTest.filter((r) => r.isNew).every((r) => ds.facetsFromSubjects((r.book as FreshBook).subjects)[fi2.get('romance')!] <= 0.55),
+     'kacinma filtresi yeni kitaplara da uygulaniyor');
+  const offline = recommend(ds, imported.entries, prefs0, 10, []);
+  ck(offline.length === 10 && offline.every((r) => !r.isNew), 'cevrimdisi geri cekilme calisiyor');
+  const cls = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, freshness: 'classics' }), 12, fresh);
+  ck(cls.every((r) => !r.isNew), '"yeni istemiyorum" secimi yeni kitaplari tamamen eliyor');
+  const nw = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, freshness: 'new' }), 12, fresh);
+  ck(nw.filter((r) => r.isNew).length >= 6, '"agirlikli yeni" secimi kotayi dolduruyor');
+  ck(new Set(nw.map((r) => r.book.id)).size === nw.length, 'ayni kitap iki kez listelenmiyor');
+} else {
+  console.log('  UYARI: hic yeni kitap gelmedi (ag sorunu olabilir) - cevrimdisi yol test edildi');
+  const offline = recommend(ds, imported.entries, prefs0, 10, []);
+  console.log(`    cevrimdisi geri cekilme: ${offline.length} oneri`);
+}

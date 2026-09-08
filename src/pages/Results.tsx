@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dataset } from '../lib/dataset';
 import type { LibraryEntry } from '../lib/goodreads';
+import { clearFreshCache, fetchFresh, fetchFreshDescription, type FreshBook } from '../lib/openlibrary';
 import { derivePrefs, type Answers } from '../lib/questions';
 import { recommend, type Recommendation } from '../lib/recommend';
 import { Cover } from '../components/Cover';
@@ -13,13 +14,13 @@ const PART_LABELS: Record<keyof Recommendation['parts'], string> = {
   discovery: 'Keşif ayarın',
 };
 
-function Bars({ parts }: { parts: Recommendation['parts'] }) {
+function Bars({ parts, isNew }: { parts: Recommendation['parts']; isNew: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-x-5 gap-y-1.5 sm:grid-cols-4">
       {(Object.keys(PART_LABELS) as (keyof Recommendation['parts'])[]).map((k) => (
         <div key={k}>
           <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-paper/40">
-            <span>{PART_LABELS[k]}</span>
+            <span>{k === 'taste' && isNew ? 'Konu bağı' : PART_LABELS[k]}</span>
             <span className="tabular-nums">{Math.round(parts[k] * 100)}</span>
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-paper/10">
@@ -36,7 +37,14 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
   const [open, setOpen] = useState(false);
   const b = rec.book;
 
-  useEffect(() => { let live = true; ds.descriptionOf(b.id).then((d) => live && setDesc(d)); return () => { live = false; }; }, [b.id, ds]);
+  useEffect(() => {
+    let live = true;
+    const p = rec.isNew
+      ? fetchFreshDescription((b as FreshBook).workKey)
+      : ds.descriptionOf(b.id);
+    p.then((d) => live && setDesc(d));
+    return () => { live = false; };
+  }, [b, rec.isNew, ds]);
 
   const short = desc && desc.length > 420 ? desc.slice(0, 420).replace(/\s+\S*$/, '') + '…' : desc;
 
@@ -59,6 +67,11 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
+            {rec.isNew && (
+              <span className="rounded-full bg-sky-400/15 px-2.5 py-1 text-[11px] text-sky-200/85">
+                {b.year} · veri setinden yeni
+              </span>
+            )}
             {rec.inToRead && (
               <span className="rounded-full bg-accent/20 px-2.5 py-1 text-[11px] text-accent">
                 zaten okunacaklar listende
@@ -76,6 +89,18 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
           </div>
         </div>
       </div>
+
+      {rec.isNew && (
+        <div className="mt-4 rounded-lg bg-sky-400/6 px-4 py-3">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wider text-sky-200/50">
+            Open Library'den canlı geldi
+          </p>
+          <p className="text-sm text-paper/60">
+            Bu kitap ortak okur verisinin bittiği 2017’den sonra çıktı; öneri, sevdiğin
+            kitapların konularıyla örtüşmesine dayanıyor — ortak okur sinyaline değil.
+          </p>
+        </div>
+      )}
 
       {rec.seeds.length > 0 && (
         <div className="mt-4 rounded-lg bg-paper/4 px-4 py-3">
@@ -109,7 +134,7 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
       </div>
 
       <div className="mt-4 border-t border-paper/8 pt-4">
-        <Bars parts={rec.parts} />
+        <Bars parts={rec.parts} isNew={rec.isNew} />
       </div>
     </article>
   );
@@ -120,9 +145,32 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
   onEdit: () => void; onReset: () => void;
 }) {
   const [count, setCount] = useState(12);
+  const [fresh, setFresh] = useState<FreshBook[]>([]);
+  const [net, setNet] = useState<'yukleniyor' | 'hazir' | 'yok'>('yukleniyor');
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [nonce, setNonce] = useState(0);
+
+  const prefs = useMemo(() => derivePrefs(answers), [answers]);
+
+  useEffect(() => {
+    let live = true;
+    setNet('yukleniyor');
+    setProgress({ done: 0, total: 0 });
+    const topFacets = Object.entries(prefs.facetWeights)
+      .filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    fetchFresh(ds, topFacets, (done, total) => live && setProgress({ done, total }))
+      .then((list) => {
+        if (!live) return;
+        setFresh(list);
+        setNet(list.length ? 'hazir' : 'yok');
+      })
+      .catch(() => live && setNet('yok'));
+    return () => { live = false; };
+  }, [ds, prefs, nonce]);
+
   const recs = useMemo(
-    () => recommend(ds, library, derivePrefs(answers), count),
-    [ds, library, answers, count],
+    () => recommend(ds, library, prefs, count, fresh),
+    [ds, library, prefs, count, fresh],
   );
 
   return (
@@ -138,6 +186,10 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
           </p>
         </div>
         <div className="flex gap-3 text-sm">
+          <button onClick={() => { clearFreshCache(); setNonce((n) => n + 1); }}
+            className="rounded-lg border border-paper/20 px-4 py-2.5 hover:border-paper/40">
+            Yenileri tazele
+          </button>
           <button onClick={onEdit} className="rounded-lg border border-paper/20 px-4 py-2.5 hover:border-paper/40">
             Cevapları değiştir
           </button>
@@ -145,6 +197,28 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
             Baştan
           </button>
         </div>
+      </div>
+
+      <div className="mb-6 flex items-center gap-2.5 text-xs text-paper/45">
+        {net === 'yukleniyor' && (
+          <>
+            <span className="h-3 w-3 animate-spin rounded-full border border-paper/25 border-t-accent" />
+            Open Library’den 2017 sonrası kitaplar getiriliyor
+            {progress.total ? ` (${progress.done}/${progress.total})` : ''}…
+          </>
+        )}
+        {net === 'hazir' && (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            {fresh.length} yeni kitap havuza katıldı
+          </>
+        )}
+        {net === 'yok' && (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            Open Library’ye ulaşılamadı — yalnızca yerel 10.000 kitaplık havuz kullanılıyor
+          </>
+        )}
       </div>
 
       {recs.length === 0 ? (
@@ -181,7 +255,10 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
             {' '}({s.license})
           </span>
         ))}
-        . Tüm hesap tarayıcında yapıldı; hiçbir veri dışarı gönderilmedi.
+        . 2017 sonrası kitaplar{' '}
+        <a href="https://openlibrary.org" target="_blank" rel="noreferrer noopener" className="underline hover:text-paper/60">Open Library</a>{' '}
+        (CC0) üzerinden canlı getirilir. Puanlama tarayıcında yapılır; kütüphanen ve
+        cevapların hiçbir yere gönderilmez — dışarı giden tek şey konu arama sorgularıdır.
       </footer>
     </div>
   );

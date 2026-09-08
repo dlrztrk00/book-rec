@@ -71,6 +71,7 @@ console.log(`  ${res.entries.length} kitap veri setiyle eslesti  (%${Math.round(
 console.log(`  ${res.unmatched.length} kitap havuzda yok`);
 console.log(`  eslesenlerin ${rated.length} tanesi puanli, ${loved.length} tanesi 4+ yildiz  <- oneri gucu buradan gelir`);
 console.log(`  eslesme yontemi: ${JSON.stringify(res.entries.reduce((a: any, e) => { a[e.matchedBy] = (a[e.matchedBy] ?? 0) + 1; return a; }, {}))}`);
+console.log(`  ${res.readKeys.length} okunmus baslik eleme listesine alindi (eslesmeyenler dahil)`);
 
 if (loved.length) {
   console.log(`\n  Sevdigin kitaplardan bazilari (motorun tohumlari):`);
@@ -88,6 +89,7 @@ const profiles: { ad: string; a: Answers }[] = [
   { ad: 'NOTR (hicbir anket cevabi yok, sadece gecmisin)', a: {} },
   { ad: 'Karisik / dengeli', a: { mood: 'gripping', kind: 'either', freshness: 'balanced', novelty: 'stretch' } },
   { ad: 'Agirlikli yeni cikanlar', a: { mood: 'gripping', kind: 'either', freshness: 'new', novelty: 'stretch' } },
+  { ad: 'Agirlikli yeni + Colleen Hoover ENGELLI', a: { mood: 'gripping', kind: 'either', freshness: 'new', novelty: 'stretch', blockedAuthors: ['Colleen Hoover'] } },
 ];
 
 let fresh: FreshBook[] = [];
@@ -99,7 +101,7 @@ if (live) {
 }
 
 for (const p of profiles) {
-  const recs = recommend(ds, res.entries, derivePrefs(p.a), 8, fresh);
+  const recs = recommend(ds, res.entries, derivePrefs(p.a), 8, fresh, res.readKeys);
   console.log(`\n■ ${p.ad}`);
   if (!recs.length) { console.log('   (oneri cikmadi)'); continue; }
   for (const r of recs) {

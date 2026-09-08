@@ -1,10 +1,11 @@
-import type { LibraryEntry } from './goodreads';
-import type { Answers } from './questions';
+import type { LibraryEntry } from './goodreads.ts';
+import type { Answers } from './questions.ts';
 
 const KEY = 'book-rec:v1';
 
 export type Saved = {
   library: LibraryEntry[];
+  readKeys?: string[];
   answers: Answers;
   step: 'import' | 'survey' | 'results';
   importStats?: { total: number; matched: number; rated: number };

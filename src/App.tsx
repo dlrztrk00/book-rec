@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { loadDataset, type Dataset } from './lib/dataset';
-import type { LibraryEntry } from './lib/goodreads';
-import type { Answers } from './lib/questions';
-import * as store from './lib/storage';
-import { Import } from './pages/Import';
-import { Survey } from './pages/Survey';
-import { Results } from './pages/Results';
+import { loadDataset, type Dataset } from './lib/dataset.ts';
+import type { LibraryEntry } from './lib/goodreads.ts';
+import type { Answers } from './lib/questions.ts';
+import * as store from './lib/storage.ts';
+import { Import } from './pages/Import.tsx';
+import { Survey } from './pages/Survey.tsx';
+import { Results } from './pages/Results.tsx';
 
 export default function App() {
   const [ds, setDs] = useState<Dataset | null>(null);
@@ -14,6 +14,7 @@ export default function App() {
 
   const saved = store.load();
   const [library, setLibrary] = useState<LibraryEntry[]>(saved?.library ?? []);
+  const [readKeys, setReadKeys] = useState<string[]>(saved?.readKeys ?? []);
   const [answers, setAnswers] = useState<Answers>(saved?.answers ?? {});
   const [step, setStep] = useState<store.Saved['step']>(saved?.step ?? 'import');
   const [stats, setStats] = useState(saved?.importStats);
@@ -22,7 +23,8 @@ export default function App() {
     loadDataset(setPhase).then(setDs).catch((e) => setError(String(e?.message ?? e)));
   }, []);
 
-  useEffect(() => { store.save({ library, answers, step, importStats: stats }); }, [library, answers, step, stats]);
+  useEffect(() => { store.save({ library, readKeys, answers, step, importStats: stats }); },
+    [library, readKeys, answers, step, stats]);
 
   if (error) {
     return (
@@ -50,9 +52,10 @@ export default function App() {
   if (step === 'import') {
     return (
       <Import ds={ds} existing={stats}
-        onSkip={() => { setLibrary([]); setStats(undefined); setStep('survey'); }}
+        onSkip={() => { setLibrary([]); setReadKeys([]); setStats(undefined); setStep('survey'); }}
         onDone={(r) => {
           setLibrary(r.entries);
+          setReadKeys(r.readKeys);
           setStats({ total: r.totalRows, matched: r.entries.length, rated: r.entries.filter((e) => e.myRating >= 4).length });
           setStep('survey');
         }} />
@@ -67,8 +70,16 @@ export default function App() {
   }
 
   return (
-    <Results ds={ds} library={library} answers={answers}
+    <Results ds={ds} library={library} readKeys={readKeys} answers={answers}
       onEdit={() => setStep('survey')}
-      onReset={() => { store.clear(); setLibrary([]); setAnswers({}); setStats(undefined); setStep('import'); }} />
+      onUnblockAuthor={(a: string) => setAnswers((prev) => ({
+        ...prev,
+        blockedAuthors: (((prev.blockedAuthors as string[] | undefined) ?? []).filter((x) => x !== a)),
+      }))}
+      onBlockAuthor={(a: string) => setAnswers((prev) => {
+        const cur = (prev.blockedAuthors as string[] | undefined) ?? [];
+        return cur.includes(a) ? prev : { ...prev, blockedAuthors: [...cur, a] };
+      })}
+      onReset={() => { store.clear(); setLibrary([]); setReadKeys([]); setAnswers({}); setStats(undefined); setStep('import'); }} />
   );
 }

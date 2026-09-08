@@ -10,7 +10,8 @@ export type Question =
   | { id: string; section: string; prompt: string; help?: string; kind: 'single'; options: Option[] }
   | { id: string; section: string; prompt: string; help?: string; kind: 'multi'; max: number; options: Option[] }
   | { id: string; section: string; prompt: string; help?: string; kind: 'scale'; left: string; right: string; facetsLeft: Record<string, number>; facetsRight: Record<string, number> }
-  | { id: string; section: string; prompt: string; help?: string; kind: 'books'; max: number };
+  | { id: string; section: string; prompt: string; help?: string; kind: 'books'; max: number }
+  | { id: string; section: string; prompt: string; help?: string; kind: 'authors'; max: number };
 
 export const QUESTIONS: Question[] = [
   { id: 'mood', section: 'Ruh hali', kind: 'single',
@@ -160,6 +161,10 @@ export const QUESTIONS: Question[] = [
       { value: 'wild', label: 'Beni tamamen şaşırt' },
     ] },
 
+  { id: 'blockedAuthors', section: 'İçerik', kind: 'authors', max: 10,
+    prompt: 'Okumak istemediğin yazar var mı?',
+    help: 'Seçtiğin yazarların hiçbir kitabı listeye girmez. Sonradan öneri kartlarından da ekleyebilirsin.' },
+
   { id: 'likeBooks', section: 'Keşif', kind: 'books', max: 3,
     prompt: 'Şuna benzer bir şey istiyorum...',
     help: 'İstersen 1-3 kitap seç; öneriler bunlara komşu olanlardan gelir.' },
@@ -177,6 +182,7 @@ export type Prefs = {
   popularity: 'popular' | 'any' | 'hidden';
   novelty: 'safe' | 'stretch' | 'wild';
   likeBooks: number[];
+  blockedAuthors: string[];
 };
 
 const add = (w: Record<string, number>, f: Record<string, number> | undefined, k = 1) => {
@@ -224,5 +230,6 @@ export function derivePrefs(answers: Answers): Prefs {
     popularity: (answers.popularity as Prefs['popularity']) ?? 'any',
     novelty: (answers.novelty as Prefs['novelty']) ?? 'stretch',
     likeBooks: (answers.likeBooks as number[] | undefined) ?? [],
+    blockedAuthors: (answers.blockedAuthors as string[] | undefined) ?? [],
   };
 }

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Dataset } from '../lib/dataset';
-import type { LibraryEntry } from '../lib/goodreads';
-import { clearFreshCache, fetchFresh, fetchFreshDescription, type FreshBook } from '../lib/openlibrary';
-import { derivePrefs, type Answers } from '../lib/questions';
-import { recommend, type Recommendation } from '../lib/recommend';
-import { Cover } from '../components/Cover';
-import { MatchRing } from '../components/MatchRing';
+import type { Dataset } from '../lib/dataset.ts';
+import type { LibraryEntry } from '../lib/goodreads.ts';
+import { clearFreshCache, fetchFresh, fetchFreshDescription, type FreshBook } from '../lib/openlibrary.ts';
+import { derivePrefs, type Answers } from '../lib/questions.ts';
+import { recommend, type Recommendation } from '../lib/recommend.ts';
+import { Cover } from '../components/Cover.tsx';
+import { MatchRing } from '../components/MatchRing.tsx';
 
 const PART_LABELS: Record<keyof Recommendation['parts'], string> = {
   taste: 'Okuma geçmişin',
@@ -32,7 +32,9 @@ function Bars({ parts, isNew }: { parts: Recommendation['parts']; isNew: boolean
   );
 }
 
-function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
+function Card({ rec, ds, onBlockAuthor }: {
+  rec: Recommendation; ds: Dataset; onBlockAuthor: (author: string) => void;
+}) {
   const [desc, setDesc] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const b = rec.book;
@@ -57,7 +59,17 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h3 className="font-[family-name:var(--font-display)] text-xl leading-tight">{b.title}</h3>
-              <p className="mt-0.5 text-sm text-paper/60">{b.authors.join(', ')}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-paper/60">
+                <span>{b.authors.join(', ')}</span>
+                {b.authors[0] && (
+                  <button onClick={() => onBlockAuthor(b.authors[0])}
+                    title={`${b.authors[0]} kitaplarını bir daha gösterme`}
+                    className="rounded border border-paper/15 px-1.5 py-0.5 text-[10px] text-paper/40
+                               transition hover:border-red-400/50 hover:text-red-300">
+                    bu yazarı gösterme
+                  </button>
+                )}
+              </p>
               <p className="mt-1.5 text-xs text-paper/40">
                 {[b.year || null, b.pages ? `${b.pages} sayfa` : null, `${b.avg.toFixed(2)} ★`,
                   `${(b.count / 1000).toFixed(0)}b puan`].filter(Boolean).join(' · ')}
@@ -140,9 +152,10 @@ function Card({ rec, ds }: { rec: Recommendation; ds: Dataset }) {
   );
 }
 
-export function Results({ ds, library, answers, onEdit, onReset }: {
-  ds: Dataset; library: LibraryEntry[]; answers: Answers;
+export function Results({ ds, library, readKeys, answers, onEdit, onReset, onBlockAuthor, onUnblockAuthor }: {
+  ds: Dataset; library: LibraryEntry[]; readKeys: string[]; answers: Answers;
   onEdit: () => void; onReset: () => void;
+  onBlockAuthor: (author: string) => void; onUnblockAuthor: (author: string) => void;
 }) {
   const [count, setCount] = useState(12);
   const [fresh, setFresh] = useState<FreshBook[]>([]);
@@ -151,6 +164,7 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
   const [nonce, setNonce] = useState(0);
 
   const prefs = useMemo(() => derivePrefs(answers), [answers]);
+  const blockedAuthors = prefs.blockedAuthors;
 
   useEffect(() => {
     let live = true;
@@ -169,8 +183,8 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
   }, [ds, prefs, nonce]);
 
   const recs = useMemo(
-    () => recommend(ds, library, prefs, count, fresh),
-    [ds, library, prefs, count, fresh],
+    () => recommend(ds, library, prefs, count, fresh, readKeys),
+    [ds, library, prefs, count, fresh, readKeys],
   );
 
   return (
@@ -198,6 +212,18 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
           </button>
         </div>
       </div>
+
+      {blockedAuthors.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg bg-paper/4 px-4 py-3">
+          <span className="text-xs text-paper/45">Gizlenen yazarlar:</span>
+          {blockedAuthors.map((a) => (
+            <button key={a} onClick={() => onUnblockAuthor(a)}
+              className="group flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/10 py-1 pl-2.5 pr-1.5 text-[11px]">
+              {a}<span className="text-paper/40 group-hover:text-red-300">×</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mb-6 flex items-center gap-2.5 text-xs text-paper/45">
         {net === 'yukleniyor' && (
@@ -234,7 +260,7 @@ export function Results({ ds, library, answers, onEdit, onReset }: {
       ) : (
         <>
           <div className="space-y-4">
-            {recs.map((r) => <Card key={r.book.id} rec={r} ds={ds} />)}
+            {recs.map((r) => <Card key={r.book.id} rec={r} ds={ds} onBlockAuthor={onBlockAuthor} />)}
           </div>
           {count < 30 && (
             <button onClick={() => setCount(count + 12)}

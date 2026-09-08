@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import type { Book, Dataset } from '../lib/dataset';
-import { normTitle } from '../lib/goodreads';
+import type { Book, Dataset } from '../lib/dataset.ts';
+import { normTitle } from '../lib/goodreads.ts';
 
 export function BookPicker({ ds, value, max, onChange }: {
   ds: Dataset; value: number[]; max: number; onChange: (ids: number[]) => void;

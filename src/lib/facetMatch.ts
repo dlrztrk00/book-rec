@@ -1,4 +1,4 @@
-import type { Facet } from './dataset';
+import type { Facet } from './dataset.ts';
 
 /**
  * Serbest metin konu etiketlerini (Open Library `subject[]`) build sirasinda

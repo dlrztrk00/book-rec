@@ -15,9 +15,11 @@ Bu sorgular senin verini içermez. İnternet yoksa site çalışmaya devam eder,
 
 1. **İçe aktarma** — Goodreads'in `Export Library` CSV'si okunur. Kitaplar önce Goodreads
    id'siyle, tutmazsa başlık+yazar, o da tutmazsa tek aday varsa başlıkla eşleştirilir.
-2. **Anket** — 17 soru: ruh hali, tempo, ton, tür, tema, uzunluk, dönem, seri tercihi,
-   kaçınılacak içerikler, ne kadar keşif istediğin, yeni çıkanlara ne kadar yer verileceği
-   ve "şuna benzer olsun" kitap seçimi.
+   Eşleşmeyen satırlar da **başlık+yazar anahtarı olarak saklanır**: kütüphanenin çoğu
+   veri setinde bulunmasa bile okuduğun bir kitap sana geri önerilmez.
+2. **Anket** — 18 soru: ruh hali, tempo, ton, tür, tema, uzunluk, dönem, seri tercihi,
+   kaçınılacak içerikler, **okumak istemediğin yazarlar**, ne kadar keşif istediğin,
+   yeni çıkanlara ne kadar yer verileceği ve "şuna benzer olsun" kitap seçimi.
 3. **Öneri** — dört bileşenden bir eşleşme yüzdesi:
 
    | Bileşen | Nereden geliyor |
@@ -29,6 +31,16 @@ Bu sorgular senin verini içermez. İnternet yoksa site çalışmaya devam eder,
 
    Her kart hangi kitaplarından türediğini, hangi boyutları tutturduğunu ve neyi
    tutturamadığını ayrı ayrı gösterir.
+
+### Neyin önerilmeyeceği
+
+- Okuduğun / yarım bıraktığın her kitap — hem veri seti id'siyle hem başlık+yazar
+  anahtarıyla, hem yerel havuzdan hem Open Library sonuçlarından
+- Engellediğin yazarlar — anketten seçebilir ya da öneri kartındaki
+  *"bu yazarı gösterme"* düğmesiyle anında ekleyebilirsin
+- "Kesinlikle istemediklerim" olarak işaretlediğin içerik boyutları
+
+`okunacaklar` rafındaki kitaplar önerilmeye devam eder, ama kartta rozetle işaretlenir.
 
 ## Yeni kitaplar (2017+)
 

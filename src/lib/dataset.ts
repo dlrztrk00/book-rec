@@ -1,4 +1,4 @@
-import { makeFacetsFromSubjects } from './facetMatch';
+import { makeFacetsFromSubjects } from './facetMatch.ts';
 
 export type Book = {
   id: number; gr: number; title: string; authors: string[];

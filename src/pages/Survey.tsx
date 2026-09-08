@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import type { Dataset } from '../lib/dataset';
-import { QUESTIONS, type Answers } from '../lib/questions';
-import { BookPicker } from '../components/BookPicker';
+import type { Dataset } from '../lib/dataset.ts';
+import { QUESTIONS, type Answers } from '../lib/questions.ts';
+import { AuthorPicker } from '../components/AuthorPicker.tsx';
+import { BookPicker } from '../components/BookPicker.tsx';
 
 export function Survey({ ds, answers, onChange, onFinish, onBack }: {
   ds: Dataset;
@@ -18,7 +19,7 @@ export function Survey({ ds, answers, onChange, onFinish, onBack }: {
 
   const answered =
     q.kind === 'multi' ? Array.isArray(value) && value.length > 0
-    : q.kind === 'books' ? true
+    : q.kind === 'books' || q.kind === 'authors' ? true
     : value !== undefined;
 
   const next = () => (i + 1 < total ? setI(i + 1) : onFinish());
@@ -94,6 +95,12 @@ export function Survey({ ds, answers, onChange, onFinish, onBack }: {
           </div>
         )}
 
+        {q.kind === 'authors' && (
+          <AuthorPicker ds={ds} max={q.max}
+            value={(value as string[] | undefined) ?? []}
+            onChange={(a) => set(a)} />
+        )}
+
         {q.kind === 'books' && (
           <BookPicker ds={ds} max={q.max}
             value={(value as number[] | undefined) ?? []}
@@ -104,7 +111,7 @@ export function Survey({ ds, answers, onChange, onFinish, onBack }: {
       <div className="mt-10 flex items-center justify-between">
         <button onClick={prev} className="text-sm text-paper/45 hover:text-paper">← Geri</button>
         <div className="flex items-center gap-4">
-          {!answered && q.kind !== 'books' && (
+          {!answered && q.kind !== 'books' && q.kind !== 'authors' && (
             <button onClick={next} className="text-sm text-paper/40 hover:text-paper/70">Atla</button>
           )}
           <button onClick={next} disabled={!answered && q.kind === 'multi'}

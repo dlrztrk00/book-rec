@@ -1,4 +1,4 @@
-import type { Book } from '../lib/dataset';
+import type { Book } from '../lib/dataset.ts';
 
 // Kapak gorselleri disaridan cekilmiyor (site tamamen cevrimdisi calisir),
 // bunun yerine kitabin kimliginden tutarli bir kapak uretiliyor.

@@ -1,7 +1,7 @@
-import type { Book, Dataset } from './dataset';
-import type { LibraryEntry } from './goodreads';
-import type { FreshBook } from './openlibrary';
-import type { Prefs } from './questions';
+import type { Book, Dataset } from './dataset.ts';
+import { bookKey, type LibraryEntry } from './goodreads.ts';
+import type { FreshBook } from './openlibrary.ts';
+import type { Prefs } from './questions.ts';
 
 export type SeedReason = { book: Book; weight: number };
 
@@ -78,7 +78,14 @@ export function recommend(
   prefs: Prefs,
   limit = 12,
   fresh: FreshBook[] = [],
+  /** Veri setiyle eslesmeyenler dahil, okunmus kitaplarin baslik+yazar anahtarlari. */
+  readKeys: string[] = [],
 ): Recommendation[] {
+  const readSet = new Set(readKeys);
+  const blocked = new Set(prefs.blockedAuthors.map((a) => a.trim().toLowerCase()).filter(Boolean));
+  const isBlocked = (b: Book) => b.authors.some((a) => blocked.has(a.trim().toLowerCase()));
+  const alreadyRead = (b: Book) =>
+    b.authors.some((a) => readSet.has(bookKey(b.title, a))) || readSet.has(bookKey(b.title, ''));
   const facetIndex = new Map(ds.facets.map((f, i) => [f.id, i]));
   const F = ds.facets.length;
 
@@ -119,7 +126,9 @@ export function recommend(
 
   for (const s of seeds) {
     for (const n of ds.neighbors(s.id)) {
+      const nb = ds.books[n.id];
       if (owned.has(n.id) && owned.get(n.id)!.shelf !== 'to-read') continue;
+      if (nb && (alreadyRead(nb) || isBlocked(nb))) continue;
       if (s.w > 0) {
         const v = s.w * n.score * scale;
         taste.set(n.id, (taste.get(n.id) ?? 0) + v);
@@ -143,6 +152,7 @@ export function recommend(
   for (const b of source) {
     const own = owned.get(b.id);
     if (own && own.shelf !== 'to-read') continue;
+    if (alreadyRead(b) || isBlocked(b)) continue;
     if (b.count < 500) continue;                                  // cok az veriye guvenme
     if (prefs.kind !== 'either') {
       const isFiction = b.genres.includes('fiction');
@@ -163,6 +173,8 @@ export function recommend(
   const rawBridge: number[] = [];
 
   for (const fb of prefs.freshness === 'classics' ? [] : fresh) {
+    // Yeni kitaplar da kutuphaneye ve engelli yazar listesine karsi elenir.
+    if (alreadyRead(fb) || isBlocked(fb)) continue;
     const v = ds.facetsFromSubjects(fb.subjects);
     if (avoidIdx.some((i) => v[i] > 0.55)) continue;
     if (prefs.pages && fb.pages > 0 && (fb.pages < prefs.pages[0] || fb.pages > prefs.pages[1])) continue;

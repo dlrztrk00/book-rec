@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import type { Dataset } from '../lib/dataset';
-import { importGoodreadsCsv, type ImportResult } from '../lib/goodreads';
+import type { Dataset } from '../lib/dataset.ts';
+import { importGoodreadsCsv, type ImportResult } from '../lib/goodreads.ts';
 
 export function Import({ ds, onDone, onSkip, existing }: {
   ds: Dataset;

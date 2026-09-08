@@ -1,6 +1,6 @@
 // Open Library istemcisi (CC0 veri, anahtar gerektirmez).
 // Veri setinin bittigi 2017'den sonraki kitaplari canli olarak getirir.
-import type { Book, Dataset } from './dataset';
+import type { Book, Dataset } from './dataset.ts';
 
 export const FRESH_ID_BASE = 1_000_000;
 export const FRESH_FROM_YEAR = 2017;
@@ -201,7 +201,8 @@ export async function fetchFreshDescription(workKey: string): Promise<string | n
   const hit = cacheGet<string>(key);
   if (hit !== null) return hit;
   const d = await getJson(`${API}${workKey}.json`);
-  let desc = d?.description;
+  if (d === null) return null;        // ag hatasi: onbellege YAZMA, sonra tekrar denensin
+  let desc = d.description;
   if (desc && typeof desc === 'object') desc = desc.value;
   const text = typeof desc === 'string'
     ? desc.replace(/<[^>]{0,200}>/g, ' ')
@@ -210,6 +211,6 @@ export async function fetchFreshDescription(workKey: string): Promise<string | n
         .replace(/-{3,}[\s\S]*$/, '')
         .replace(/\s+/g, ' ').trim().slice(0, 2600)
     : '';
-  cacheSet(key, text);
+  cacheSet(key, text);                // gercekten ozeti olmayan kitap da onbelleklenir
   return text || null;
 }

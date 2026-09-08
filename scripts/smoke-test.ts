@@ -6,6 +6,7 @@ import { importGoodreadsCsv } from '../src/lib/goodreads.ts';
 import { derivePrefs, type Answers } from '../src/lib/questions.ts';
 import { recommend } from '../src/lib/recommend.ts';
 import { makeFacetsFromSubjects } from '../src/lib/facetMatch.ts';
+import { bookKey } from '../src/lib/goodreads.ts';
 import { fetchFresh, fetchFreshDescription, type FreshBook } from '../src/lib/openlibrary.ts';
 
 // Node'da localStorage yok; onbellek katmani icin basit bir vekil.
@@ -109,6 +110,17 @@ const check = (ok: boolean, m: string) => console.log(`  ${ok ? 'OK  ' : 'HATA'}
 const base = recommend(ds, imported.entries, derivePrefs(senaryolar[0].a), 12);
 const readIds = new Set(imported.entries.filter((e) => e.shelf === 'read').map((e) => e.bookId));
 check(base.every((r) => !readIds.has(r.book.id)), 'okunmus kitaplar onerilmiyor');
+
+// Eslesmeyen satirlar da elenmeli: kutuphanenin cogu veri setiyle eslesmeyebilir.
+const keyed = recommend(ds, imported.entries, derivePrefs(senaryolar[0].a), 12, [], imported.readKeys);
+const readKeySet = new Set(imported.readKeys);
+check(keyed.every((r) => !r.book.authors.some((a) => readKeySet.has(bookKey(r.book.title, a)))),
+      'okunmus basliklar (eslesmeyenler dahil) baslik+yazar ile de eleniyor');
+
+// Engelli yazar hicbir havuzdan gecmemeli.
+const blockAuthor = ds.books[imported.entries[0].bookId].authors[0];
+const blocked = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, blockedAuthors: [blockAuthor] }), 12);
+check(blocked.every((r) => !r.book.authors.includes(blockAuthor)), `engelli yazar (${blockAuthor}) listeye girmiyor`);
 check(base.every((r) => r.book.seriesNo === 0), 'tek-kitap filtresi calisiyor');
 check(new Set(base.map((r) => r.book.authors[0])).size >= base.length - 2, 'yazar cesitliligi korunuyor');
 check(base.every((r) => r.match >= 0 && r.match <= 100), 'eslesme yuzdesi 0-100 araliginda');
@@ -175,6 +187,20 @@ if (fresh.length) {
   const nw = recommend(ds, imported.entries, derivePrefs({ ...senaryolar[0].a, freshness: 'new' }), 12, fresh);
   ck(nw.filter((r) => r.isNew).length >= 6, '"agirlikli yeni" secimi kotayi dolduruyor');
   ck(new Set(nw.map((r) => r.book.id)).size === nw.length, 'ayni kitap iki kez listelenmiyor');
+
+  // Yeni kitaplar da kutuphaneye karsi elenmeli: gercek bir yeni kitabi
+  // "okunmus" gibi isaretleyip listeden dusmesi gerektigini dogrula.
+  const victim = fresh[0];
+  const fakeRead = [...imported.readKeys, bookKey(victim.title, victim.authors[0] ?? '')];
+  const withoutVictim = recommend(ds, imported.entries,
+    derivePrefs({ ...senaryolar[0].a, freshness: 'new' }), 30, fresh, fakeRead);
+  ck(!withoutVictim.some((r) => r.book.title === victim.title),
+     `okunmus isaretlenen yeni kitap ("${victim.title.slice(0, 26)}") listeden dusuyor`);
+
+  const blockedFresh = recommend(ds, imported.entries,
+    derivePrefs({ ...senaryolar[0].a, freshness: 'new', blockedAuthors: [victim.authors[0] ?? 'x'] }), 30, fresh);
+  ck(!blockedFresh.some((r) => r.book.authors.includes(victim.authors[0] ?? 'x')),
+     'engelli yazar yeni kitaplarda da eleniyor');
 } else {
   console.log('  UYARI: hic yeni kitap gelmedi (ag sorunu olabilir) - cevrimdisi yol test edildi');
   const offline = recommend(ds, imported.entries, prefs0, 10, []);

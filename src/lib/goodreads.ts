@@ -1,5 +1,5 @@
 // Goodreads "Export Library" CSV dosyasini okur ve veri setiyle eslestirir.
-import type { Dataset } from './dataset';
+import type { Dataset } from './dataset.ts';
 
 export type Shelf = 'read' | 'to-read' | 'currently-reading' | 'other';
 
@@ -15,6 +15,9 @@ export type ImportResult = {
   entries: LibraryEntry[];
   totalRows: number;
   unmatched: { title: string; author: string; shelf: Shelf }[];
+  /** Veri setiyle eslesmeyenler dahil, TUM okunmus satirlarin baslik+yazar anahtari.
+   *  Kutuphanenin %90'i eslesmese bile okunan kitap tekrar onerilmesin diye. */
+  readKeys: string[];
 };
 
 function parseCsv(text: string): string[][] {
@@ -48,6 +51,10 @@ export const normTitle = (s: string) =>
     .replace(/^(the|a|an) /, '')
     .trim();
 
+/** Kitap kimligi icin kararli anahtar: normalize baslik + yazar soyadi. */
+export const bookKey = (title: string, author: string) =>
+  `${normTitle(title)}|${normAuthor(author)}`;
+
 const normAuthor = (s: string) => {
   const parts = stripAccents(String(s || '').toLowerCase()).replace(/[^a-z ]+/g, ' ').trim().split(/\s+/);
   return parts.length ? parts[parts.length - 1] : '';   // soyad
@@ -61,7 +68,7 @@ const shelfOf = (s: string): Shelf => {
 
 export function importGoodreadsCsv(text: string, ds: Dataset): ImportResult {
   const rows = parseCsv(text);
-  if (!rows.length) return { entries: [], totalRows: 0, unmatched: [] };
+  if (!rows.length) return { entries: [], totalRows: 0, unmatched: [], readKeys: [] };
   const header = rows[0].map((h) => h.trim());
   const col = (name: string) => header.indexOf(name);
 
@@ -84,6 +91,7 @@ export function importGoodreadsCsv(text: string, ds: Dataset): ImportResult {
 
   const entries: LibraryEntry[] = [];
   const unmatched: ImportResult['unmatched'] = [];
+  const readKeys = new Set<string>();
   const seen = new Set<number>();
   let totalRows = 0;
 
@@ -96,6 +104,8 @@ export function importGoodreadsCsv(text: string, ds: Dataset): ImportResult {
     const shelf = cShelf >= 0 ? shelfOf(r[cShelf]) : 'other';
     const myRating = cRating >= 0 ? Math.max(0, Math.min(5, Math.round(+r[cRating] || 0))) : 0;
     const dateRead = cDate >= 0 ? (r[cDate] || '') : '';
+
+    if (shelf !== 'to-read') readKeys.add(bookKey(title, author));
 
     let bookId = 0;
     let matchedBy: LibraryEntry['matchedBy'] = 'id';
@@ -117,5 +127,5 @@ export function importGoodreadsCsv(text: string, ds: Dataset): ImportResult {
     entries.push({ bookId, myRating, shelf, dateRead, matchedBy });
   }
 
-  return { entries, totalRows, unmatched };
+  return { entries, totalRows, unmatched, readKeys: [...readKeys] };
 }
